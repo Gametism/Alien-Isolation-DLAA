@@ -4,18 +4,16 @@ Created by Gametism
 
 ## Overview
 
-Alien: Isolation DLAA adds NVIDIA DLAA to Alien: Isolation at native rendering resolution.
+Alien: Isolation DLAA adds NVIDIA DLAA to Alien: Isolation at native rendering
+resolution.
 
-The v1.0 renderer uses the configuration established during testing:
+The mod provides selectable NVIDIA DLAA render presets and configurable
+sharpness directly through its in-game menu.
 
-- Native-resolution DLAA
-- SMAA T2x temporal pipeline integration
-- 8-sample low-discrepancy temporal jitter
-- Corrected/inverted motion-vector convention
-- Linear depth integration
-- Automatic temporal-history reset when required
+Default configuration:
 
-DLSS Super Resolution is not included in v1.0.
+- DLAA Preset: **K**
+- Sharpness: **0.35**
 
 ## Requirements
 
@@ -23,63 +21,77 @@ DLSS Super Resolution is not included in v1.0.
 - NVIDIA DLSS DLLs included with the mod
 - Compatible ASI loader
 
-### Required In-Game Graphics Settings
+### Required In-Game Graphics Setting
 
-For DLAA to work correctly and reliably, the following in-game setting is required:
+Anti-Aliasing must be set to:
 
-| Option | Required Value |
-| --- | --- |
-| Anti-Aliasing | **SMAA T2x** |
+**SMAA T2x**
 
-**Anti-Aliasing must be set to SMAA T2x.**
+Disabling Anti-Aliasing or using an incompatible anti-aliasing mode can cause
+severe temporal smearing and visual breakup.
 
-Disabling Anti-Aliasing or using an incompatible anti-aliasing mode can cause severe temporal smearing and visual breakup.
-
-Unlike Alias Isolation, **Chromatic Aberration does not need to be disabled and Motion Blur does not need to be enabled**. These settings can be configured according to personal preference.
+Chromatic Aberration and Motion Blur can be configured according to personal
+preference.
 
 ## In-Game Menu
 
-Press **F7** by default to open or close the menu.
+Default controls:
 
-The menu is rendered directly inside the game.
+- **F7** — Open/Close Menu
+- **F8** — Toggle DLAA
 
 Available settings:
 
 - Enable DLAA
+- DLAA Preset
+- Sharpness
 - Reset DLAA History
-- Menu Scale: 80%, 100%, 125%, 150%
+- Menu Scale
 - Open/Close Menu hotkey
 - Toggle DLAA hotkey
 - Reset Hotkeys to Defaults
 - Reset All Settings
 
-The menu displays:
+## DLAA Presets
 
-**Created by Gametism**
+Four NVIDIA DLAA render presets can be selected:
 
-## Default Hotkeys
+- **J** — Alternative transformer preset that can reduce ghosting in some scenes, but may introduce more flickering.
+- **K** — Default. NVIDIA's recommended/default preset for DLAA.
+- **L** — Alternative transformer preset normally associated with Ultra Performance.
+- **M** — Alternative transformer preset normally associated with Performance.
 
-- **F7** — Open/Close Menu
-- **F8** — Toggle DLAA
+Changing the preset recreates the DLAA feature and resets temporal history.
 
-Both hotkeys can be rebound from the menu.
+Preset K remains the default because it is NVIDIA's designated DLAA preset and
+provides the safest general-purpose image-quality configuration. Presets L and
+M are available for users who prefer their visual characteristics.
 
-One physical key press triggers only one action; configurable hotkeys use release-latched input handling to prevent repeated toggles.
+## Sharpness
 
-## Menu Input
+Sharpness can be adjusted from:
 
-While the menu is open:
+```text
+Off
+0.05
+0.10
+...
+0.50
+```
 
-- Mouse input is captured by the menu
-- Keyboard input continues to reach Alien: Isolation
-- Controller input continues to reach Alien: Isolation
-- The menu uses its own virtual mouse cursor driven by raw mouse input during gameplay
+`Off` is equivalent to a sharpness value of `0.00`.
 
-Mouse and keyboard can both be used to operate the menu.
+Default:
+
+```text
+0.35
+```
+
+Changing sharpness recreates the DLAA feature and resets temporal history.
 
 ## Configuration
 
-Settings are saved automatically to:
+Settings are stored in:
 
 ```text
 AlienIsolationDLAA.ini
@@ -90,6 +102,8 @@ Default configuration:
 ```ini
 [DLAA]
 Enabled=1
+Sharpness=0.35
+Preset=K
 
 [Hotkeys]
 Menu=118
@@ -99,39 +113,29 @@ ToggleDLAA=119
 MenuScale=100
 ```
 
-## Reset DLAA History
-
-The menu includes a manual **Reset DLAA History** command.
-
-This is normally unnecessary, but it can be used to discard accumulated temporal history immediately without disabling DLAA.
-
 ## Reset All Settings
 
 This restores:
 
 - DLAA enabled
+- DLAA Preset: K
+- Sharpness: 0.35
 - Menu hotkey: F7
 - Toggle DLAA hotkey: F8
 - Menu scale: 100%
 
-## Release Files
+## Menu Input
 
-The compiled build produces:
+While the menu is open:
 
-```text
-AlienIsolationDLAA.asi
-AlienIsolationDLAA-Bridge64.exe
-```
-
-The ASI and Bridge64 executable must remain together.
-
-An ASI loader compatible with Alien: Isolation is required.
+- Mouse input is captured by the menu
+- Keyboard input continues to reach Alien: Isolation
+- Controller input continues to reach Alien: Isolation
+- The overlay uses its own virtual raw-input mouse cursor during gameplay
 
 ## Notes
 
-Rendering-critical settings are intentionally not exposed to users.
-
-The following are fixed because they are required by the tested DLAA path:
+The following rendering-critical settings remain fixed:
 
 - SMAA T2x temporal pipeline
 - Inverted motion-vector direction
@@ -141,15 +145,15 @@ The following are fixed because they are required by the tested DLAA path:
 - Scene-color source
 - DLAA injection point
 
-Changing these would not be a normal quality preference and can cause smearing, visual breakup, instability, or incorrect temporal reconstruction.
-
 ## Credits
 
-**Alien: Isolation DLAA** was created by Gametism.
+Alien: Isolation DLAA was created by **Gametism**.
 
-Special thanks and credit to **Alias Isolation**, whose work on Alien: Isolation helped make this project possible.
+Special thanks and credit to **Alias Isolation**, whose work on Alien:
+Isolation helped make this project possible.
 
-This project incorporates and/or is derived from MIT-licensed work associated with Alias Isolation.
+This project incorporates and/or is derived from MIT-licensed work associated
+with Alias Isolation.
 
 ## MIT License
 
