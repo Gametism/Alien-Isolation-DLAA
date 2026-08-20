@@ -1,4 +1,4 @@
-﻿//Alien: Isolation DLAA by Gametism
+﻿// ALIEN: ISOLATION DLAA BY GAMETISM //
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -18,7 +18,7 @@
 #include <algorithm>
 #include <new>
 
-#include "asi_bridge_v100.hpp"
+#include "asi_bridge_v101.hpp"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "d3d11.lib")
@@ -39,6 +39,9 @@ namespace
 
     UINT g_menu_hotkey = VK_F7;
     UINT g_toggle_dlaa_hotkey = VK_F8;
+
+    float g_dlaa_sharpness = 0.35f;
+    LONG g_dlaa_render_preset = 11; 
 
     bool g_overlay_visible = false;
     bool g_overlay_dirty = true;
@@ -260,7 +263,7 @@ namespace
     uint64_t g_geometry_cb_samples = 0;
     uint64_t g_geometry_cb_candidates = 0;
 
-    bool g_zero_geometry_jitter = false;
+    bool g_zero_geometry_jitter = false; 
     uint64_t g_geometry_jitter_patch_count = 0;
     uint64_t g_geometry_jitter_patch_failures = 0;
 
@@ -276,7 +279,7 @@ namespace
     uint64_t g_res_arch_other_primary_writes = 0;
     bool g_res_arch_capture_active = false;
 
-    bool g_native_quality_test_enabled = false;
+    bool g_native_quality_test_enabled = false; 
     bool g_prev_native_quality_f8_down = false;
     uint64_t g_native_quality_draws = 0;
     uint64_t g_native_quality_jitter_scales = 0;
@@ -351,7 +354,7 @@ namespace
     uint32_t g_transition_seen_pair_count = 0;
 
 
-    bool g_primary_interval_test_enabled = false;
+    bool g_primary_interval_test_enabled = false; 
     bool g_prev_primary_interval_f8_down = false;
     uint64_t g_primary_interval_draws = 0;
     uint64_t g_primary_interval_frames = 0;
@@ -464,6 +467,7 @@ namespace
             slot->Release();
         slot=value;
     }
+
 
     void init_log_path()
     {
@@ -593,6 +597,32 @@ namespace
             g_dlaa_injection_enabled ? L"1" : L"0",
             g_ini_path);
 
+        wchar_t sharpness_value[32]{};
+        _snwprintf_s(
+            sharpness_value,
+            _countof(sharpness_value),
+            _TRUNCATE,
+            L"%.2f",
+            g_dlaa_sharpness);
+
+        WritePrivateProfileStringW(
+            L"DLAA",
+            L"Sharpness",
+            sharpness_value,
+            g_ini_path);
+
+        const wchar_t *preset_value =
+            g_dlaa_render_preset == 10 ? L"J" :
+            g_dlaa_render_preset == 12 ? L"L" :
+            g_dlaa_render_preset == 13 ? L"M" :
+                                         L"K";
+
+        WritePrivateProfileStringW(
+            L"DLAA",
+            L"Preset",
+            preset_value,
+            g_ini_path);
+
         _snwprintf_s(
             value,
             _countof(value),
@@ -619,6 +649,47 @@ namespace
 
         g_dlaa_injection_enabled =
             GetPrivateProfileIntW(L"DLAA", L"Enabled", 1, g_ini_path) != 0;
+
+        wchar_t sharpness_text[64]{};
+        GetPrivateProfileStringW(
+            L"DLAA",
+            L"Sharpness",
+            L"0.35",
+            sharpness_text,
+            _countof(sharpness_text),
+            g_ini_path);
+
+        g_dlaa_sharpness =
+            static_cast<float>(_wtof(sharpness_text));
+
+        if (g_dlaa_sharpness < 0.0f)
+            g_dlaa_sharpness = 0.0f;
+
+        if (g_dlaa_sharpness > 0.50f)
+            g_dlaa_sharpness = 0.50f;
+
+        g_dlaa_sharpness =
+            static_cast<float>(
+                static_cast<int>(g_dlaa_sharpness * 20.0f + 0.5f)) /
+            20.0f;
+
+        wchar_t preset_text[16]{};
+        GetPrivateProfileStringW(
+            L"DLAA",
+            L"Preset",
+            L"K",
+            preset_text,
+            _countof(preset_text),
+            g_ini_path);
+
+        if (_wcsicmp(preset_text, L"J") == 0)
+            g_dlaa_render_preset = 10;
+        else if (_wcsicmp(preset_text, L"L") == 0)
+            g_dlaa_render_preset = 12;
+        else if (_wcsicmp(preset_text, L"M") == 0)
+            g_dlaa_render_preset = 13;
+        else
+            g_dlaa_render_preset = 11;
 
         g_menu_scale_percent =
             GetPrivateProfileIntW(
@@ -652,7 +723,7 @@ namespace
 
         if (enabled)
         {
-            asi_bridge_v100::request_history_reset();
+            asi_bridge_v101::request_history_reset();
 
             log_line(
                 "DLAA ON source=%s toggle=%llu frame=%llu historyReset=1",
@@ -727,6 +798,51 @@ namespace
         return false;
     }
 
+
+    void cycle_dlaa_render_preset()
+    {
+        if (g_dlaa_render_preset == 10)
+            g_dlaa_render_preset = 11;
+        else if (g_dlaa_render_preset == 11)
+            g_dlaa_render_preset = 12;
+        else if (g_dlaa_render_preset == 12)
+            g_dlaa_render_preset = 13;
+        else
+            g_dlaa_render_preset = 10;
+
+        asi_bridge_v101::set_render_preset(
+            g_dlaa_render_preset);
+
+        save_config();
+        g_overlay_dirty = true;
+
+        log_line(
+            "DLAA render preset=%c",
+            g_dlaa_render_preset == 10 ? 'J' :
+            g_dlaa_render_preset == 12 ? 'L' :
+            g_dlaa_render_preset == 13 ? 'M' : 'K');
+    }
+
+    void cycle_dlaa_sharpness()
+    {
+        int step =
+            static_cast<int>(
+                g_dlaa_sharpness * 20.0f + 0.5f);
+
+        step = (step + 1) % 11;
+        g_dlaa_sharpness =
+            static_cast<float>(step) * 0.05f;
+
+        asi_bridge_v101::set_sharpness(
+            g_dlaa_sharpness);
+
+        save_config();
+        g_overlay_dirty = true;
+
+        log_line(
+            "DLAA sharpness=%.2f",
+            g_dlaa_sharpness);
+    }
 
     void cycle_menu_scale()
     {
@@ -910,6 +1026,7 @@ namespace
 
             if ((mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0)
             {
+
                 RECT client{};
                 if (g_game_window && GetClientRect(g_game_window, &client))
                 {
@@ -928,6 +1045,7 @@ namespace
             }
             else
             {
+
                 constexpr float kRawMouseSensitivity = 1.0f;
 
                 g_overlay_virtual_cursor_x +=
@@ -1017,17 +1135,17 @@ namespace
 
     int overlay_row_from_local_y(int y)
     {
-        const int row_top[7] =
+        const int row_top[9] =
         {
-            130, 182, 234, 286, 338, 390, 442
+            104, 146, 188, 230, 272, 314, 356, 398, 440
         };
 
-        const int row_bottom[7] =
+        const int row_bottom[9] =
         {
-            174, 226, 278, 330, 382, 434, 486
+            138, 180, 222, 264, 306, 348, 390, 432, 474
         };
 
-        for (int i = 0; i < 7; ++i)
+        for (int i = 0; i < 9; ++i)
         {
             if (y >= row_top[i] && y <= row_bottom[i])
                 return i;
@@ -1047,23 +1165,31 @@ namespace
             break;
 
         case 1:
-            asi_bridge_v100::request_history_reset();
-            log_line("DLAA history reset requested source=menu");
+            cycle_dlaa_render_preset();
             break;
 
         case 2:
-            cycle_menu_scale();
+            cycle_dlaa_sharpness();
             break;
 
         case 3:
-            begin_hotkey_capture(1);
+            asi_bridge_v101::request_history_reset();
+            log_line("DLAA history reset requested source=menu");
             break;
 
         case 4:
-            begin_hotkey_capture(2);
+            cycle_menu_scale();
             break;
 
         case 5:
+            begin_hotkey_capture(1);
+            break;
+
+        case 6:
+            begin_hotkey_capture(2);
+            break;
+
+        case 7:
             g_menu_hotkey = VK_F7;
             g_toggle_dlaa_hotkey = VK_F8;
 
@@ -1077,8 +1203,10 @@ namespace
             g_overlay_dirty = true;
             break;
 
-        case 6:
+        case 8:
             g_dlaa_injection_enabled = true;
+            g_dlaa_render_preset = 11;
+            g_dlaa_sharpness = 0.35f;
             g_menu_hotkey = VK_F7;
             g_toggle_dlaa_hotkey = VK_F8;
             g_menu_scale_percent = 100;
@@ -1089,7 +1217,13 @@ namespace
             g_toggle_hotkey_wait_for_release =
                 (GetAsyncKeyState(VK_F8) & 0x8000) != 0;
 
-            asi_bridge_v100::request_history_reset();
+            asi_bridge_v101::set_render_preset(
+                g_dlaa_render_preset);
+
+            asi_bridge_v101::set_sharpness(
+                g_dlaa_sharpness);
+
+            asi_bridge_v101::request_history_reset();
             save_config();
             g_overlay_dirty = true;
 
@@ -1287,6 +1421,8 @@ namespace
 
     void process_overlay_input()
     {
+
+
         if (g_overlay_capture_target == 0 &&
             release_latched_hotkey_pressed(
                 g_menu_hotkey,
@@ -1391,14 +1527,14 @@ namespace
         if (overlay_key_pressed(VK_UP))
         {
             g_overlay_selection =
-                (g_overlay_selection + 6) % 7;
+                (g_overlay_selection + 8) % 9;
             g_overlay_dirty = true;
         }
 
         if (overlay_key_pressed(VK_DOWN))
         {
             g_overlay_selection =
-                (g_overlay_selection + 1) % 7;
+                (g_overlay_selection + 1) % 9;
             g_overlay_dirty = true;
         }
 
@@ -1762,9 +1898,9 @@ namespace
 
         fill_overlay_rect(dc, 32, 112, 688, 115, RGB(65, 65, 70));
 
-        const int row_y[7] = {132, 184, 236, 288, 340, 392, 444};
+        const int row_y[9] = {106, 148, 190, 232, 274, 316, 358, 400, 442};
 
-        for (int i = 0; i < 7; ++i)
+        for (int i = 0; i < 9; ++i)
         {
             if (g_overlay_selection == i)
                 fill_overlay_rect(dc, 26, row_y[i] - 5, 694, row_y[i] + 40, highlight);
@@ -1772,26 +1908,77 @@ namespace
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[0], 390, 34,
+            40, row_y[0], 390, 32,
             L"Enable DLAA",
             white);
 
         draw_overlay_text(
             dc, normal_font,
-            465, row_y[0], 190, 34,
+            465, row_y[0], 190, 32,
             g_dlaa_injection_enabled ? L"ON" : L"OFF",
             g_dlaa_injection_enabled ? enabled : muted,
             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[1], 615, 34,
+            40, row_y[1], 390, 32,
+            L"DLAA Preset",
+            white);
+
+        const wchar_t *preset_text =
+            g_dlaa_render_preset == 10 ? L"J" :
+            g_dlaa_render_preset == 12 ? L"L" :
+            g_dlaa_render_preset == 13 ? L"M" :
+                                         L"K";
+
+        draw_overlay_text(
+            dc, normal_font,
+            465, row_y[1], 190, 32,
+            preset_text,
+            white,
+            DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+
+        draw_overlay_text(
+            dc, normal_font,
+            40, row_y[2], 390, 32,
+            L"Sharpness",
+            white);
+
+        wchar_t sharpness_text[32]{};
+
+        if (g_dlaa_sharpness <= 0.0001f)
+        {
+            wcscpy_s(
+                sharpness_text,
+                _countof(sharpness_text),
+                L"Off");
+        }
+        else
+        {
+            _snwprintf_s(
+                sharpness_text,
+                _countof(sharpness_text),
+                _TRUNCATE,
+                L"%.2f",
+                g_dlaa_sharpness);
+        }
+
+        draw_overlay_text(
+            dc, normal_font,
+            465, row_y[2], 190, 32,
+            sharpness_text,
+            white,
+            DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+
+        draw_overlay_text(
+            dc, normal_font,
+            40, row_y[3], 615, 32,
             L"Reset DLAA History",
             white);
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[2], 390, 34,
+            40, row_y[4], 390, 32,
             L"Menu Scale",
             white);
 
@@ -1805,14 +1992,14 @@ namespace
 
         draw_overlay_text(
             dc, normal_font,
-            465, row_y[2], 190, 34,
+            465, row_y[4], 190, 32,
             scale_text,
             white,
             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[3], 390, 34,
+            40, row_y[5], 390, 32,
             L"Open/Close Menu",
             white);
 
@@ -1823,14 +2010,14 @@ namespace
 
         draw_overlay_text(
             dc, normal_font,
-            430, row_y[3], 225, 34,
+            430, row_y[5], 225, 32,
             menu_key_text.c_str(),
             white,
             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[4], 390, 34,
+            40, row_y[6], 390, 32,
             L"Toggle DLAA",
             white);
 
@@ -1841,20 +2028,20 @@ namespace
 
         draw_overlay_text(
             dc, normal_font,
-            430, row_y[4], 225, 34,
+            430, row_y[6], 225, 32,
             toggle_key_text.c_str(),
             white,
             DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[5], 615, 34,
+            40, row_y[7], 615, 32,
             L"Reset Hotkeys to Defaults",
             white);
 
         draw_overlay_text(
             dc, normal_font,
-            40, row_y[6], 615, 34,
+            40, row_y[8], 615, 32,
             L"Reset All Settings",
             white);
 
@@ -2156,6 +2343,7 @@ namespace
             log_line("ERROR: failed to install in-game overlay Present hook.");
         }
     }
+
 
     bool read_dxbc_hash(const void *code, size_t code_size, DxbcHash &out)
     {
@@ -3557,6 +3745,7 @@ namespace
         if (dsv) dsv->Release();
     }
 
+
     bool patch_vtable(void *object, size_t index, void *replacement, void **original)
     {
         if (object == nullptr || replacement == nullptr || original == nullptr)
@@ -3579,6 +3768,7 @@ namespace
         FlushInstructionCache(GetCurrentProcess(), &vt[index], sizeof(void *));
         return true;
     }
+
 
     using PFN_CreateVertexShader = HRESULT (STDMETHODCALLTYPE *)(
         ID3D11Device *, const void *, SIZE_T, ID3D11ClassLinkage *, ID3D11VertexShader **);
@@ -4381,6 +4571,7 @@ namespace
 
             maybe_start_short_probe();
         }
+
 
     }
 
@@ -6597,7 +6788,7 @@ namespace
 
                     if(g_last_velocity_tex && g_last_depth_tex && g_dlaa_injection_enabled)
                     {
-                        const bool published = asi_bridge_v100::publish(
+                        const bool published = asi_bridge_v101::publish(
                             ctx,
                             scene,
                             g_last_velocity_tex,
@@ -6609,7 +6800,7 @@ namespace
 
                         if (published)
                         {
-                            asi_bridge_v100::inject_matching_output(
+                            asi_bridge_v101::inject_matching_output(
                                 ctx, scene, g_render_frame, 50);
                         }
                     }
@@ -6801,6 +6992,7 @@ namespace
         return true;
     }
 
+
     using PFN_D3D11CreateDevice = HRESULT (WINAPI *)(
         IDXGIAdapter *, D3D_DRIVER_TYPE, HMODULE, UINT,
         const D3D_FEATURE_LEVEL *, UINT, UINT,
@@ -6959,6 +7151,8 @@ namespace
         init_log_path();
         reset_log();
         load_config();
+        asi_bridge_v101::set_sharpness(g_dlaa_sharpness);
+        asi_bridge_v101::set_render_preset(g_dlaa_render_preset);
 
         log_line(
             "CONFIG DLAA=%s menuHotkey=%ls toggleHotkey=%ls CreatedBy=Gametism",
@@ -6997,9 +7191,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
     {
         g_module = hModule;
         DisableThreadLibraryCalls(hModule);
-        asi_bridge_v100::init(hModule);
-        asi_bridge_v100::set_dlss_mode(g_dlss_mode);
-        asi_bridge_v100::set_auto_exposure(g_ngx_auto_exposure);
+        asi_bridge_v101::init(hModule);
+        asi_bridge_v101::set_dlss_mode(g_dlss_mode);
+        asi_bridge_v101::set_auto_exposure(g_ngx_auto_exposure);
 
         HANDLE thread = CreateThread(nullptr, 0, initialize, nullptr, 0, nullptr);
         if (thread != nullptr)
@@ -7034,7 +7228,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
         }
 
         release_overlay_resources();
-        asi_bridge_v100::shutdown();
+        asi_bridge_v101::shutdown();
     }
 
     return TRUE;

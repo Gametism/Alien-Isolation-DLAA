@@ -16,8 +16,8 @@
 #pragma comment(lib,"d3dcompiler.lib")
 
 namespace {
-constexpr uint32_t MAGIC=0x41314942u,VERSION=100u;
-constexpr wchar_t MAPNAME[]=L"Local\\AlienIsolation_DLAA_Bridge_v100";
+constexpr uint32_t MAGIC=0x41314942u,VERSION=101u;
+constexpr wchar_t MAPNAME[]=L"Local\\AlienIsolation_DLAA_Bridge_v101";
 #pragma pack(push,1)
 struct State {
  uint32_t magic,version,producer_pid,helper_pid; int32_t luid_hi; uint32_t luid_lo;
@@ -39,6 +39,10 @@ struct State {
  uint32_t active_render_width;
  uint32_t active_render_height;
  volatile LONG auto_exposure;
+ volatile LONG sharpness_percent;
+ volatile LONG sharpness_serial;
+ volatile LONG render_preset;
+ volatile LONG render_preset_serial;
 };
 #pragma pack(pop)
 
@@ -103,12 +107,32 @@ bool ngx_create(
  uint32_t outW,uint32_t outH,
  NVSDK_NGX_PerfQuality_Value pq,
  const char*modeName,
- bool autoExposure)
+ bool autoExposure,
+ LONG requestedRenderPreset)
 {
  if(dlss)return true;
  NVSDK_NGX_Result r=NVSDK_NGX_D3D11_AllocateParameters(&runtime);
  logl("NGX AllocateParameters: %s result=0x%08X params=%p",ok(r),(uint32_t)r,runtime);
  if(NVSDK_NGX_FAILED(r)||!runtime)return false;
+
+ int renderPreset=NVSDK_NGX_DLSS_Hint_Render_Preset_K;
+ if(requestedRenderPreset==10)
+  renderPreset=NVSDK_NGX_DLSS_Hint_Render_Preset_J;
+ else if(requestedRenderPreset==12)
+  renderPreset=NVSDK_NGX_DLSS_Hint_Render_Preset_L;
+ else if(requestedRenderPreset==13)
+  renderPreset=NVSDK_NGX_DLSS_Hint_Render_Preset_M;
+
+ NVSDK_NGX_Parameter_SetI(
+  runtime,
+  NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_DLAA,
+  renderPreset);
+
+ logl("DLAA render preset=%c (%d)",
+  renderPreset==NVSDK_NGX_DLSS_Hint_Render_Preset_J?'J':
+  renderPreset==NVSDK_NGX_DLSS_Hint_Render_Preset_L?'L':
+  renderPreset==NVSDK_NGX_DLSS_Hint_Render_Preset_M?'M':'K',
+  renderPreset);
 
  NVSDK_NGX_DLSS_Create_Params cp{};
  cp.Feature.InWidth=inW;cp.Feature.InHeight=inH;
@@ -284,6 +308,10 @@ struct FadeProbe {
   const bool rapidDrop=last_luma>0.07f && luma<last_luma*0.60f;
   const bool rapidRise=last_luma>=0.0f && last_luma<0.030f && luma>0.075f;
 
+  // ASI v0.3 gradual-fade detection:
+  // Track a slowly adapting luminance baseline and require a sustained directional
+  // trend. This catches fades spread across many frames while ignoring ordinary
+  // one-frame lighting changes in Alien Isolation's dark environments.
   const float relToBaseline = baseline_luma>0.0001f ? (luma/baseline_luma) : 1.0f;
   const bool falling = last_luma>=0.0f && luma < last_luma*0.985f;
   const bool rising  = last_luma>=0.0f && luma > last_luma*1.018f;
@@ -298,6 +326,8 @@ struct FadeProbe {
   else if(fade_up_frames>0)
    --fade_up_frames;
 
+  // Adapt slowly during normal gameplay, but largely freeze the reference while
+  // an actual fade trend is developing.
   if(fade_down_frames<2 && fade_up_frames<2)
    baseline_luma = baseline_luma*0.985f + luma*0.015f;
 
@@ -326,6 +356,8 @@ struct FadeProbe {
    fade_down_frames=0;
    fade_up_frames=0;
 
+   // Once fully black, re-anchor the baseline near black so the reverse fade can
+   // be detected cleanly. On a large fade-in, re-anchor to the new scene.
    if(black)baseline_luma=luma;
    else if(rapidRise||gradualFadeUp)baseline_luma=luma;
   }
@@ -388,6 +420,8 @@ struct DepthConverter {
   if(!d||!ctx||!src)return false;D3D11_TEXTURE2D_DESC sd{};src->GetDesc(&sd);
   if(!ensure_shaders(d)||!ensure_target(d,sd.Width,sd.Height))return false;
 
+  // D24S8 needs a typeless-compatible shader view. Opened shared texture is D24S8;
+  // CreateShaderResourceView with R24_UNORM_X8_TYPELESS works on typeless-created depth resources.
   D3D11_SHADER_RESOURCE_VIEW_DESC vd{};vd.Format=DXGI_FORMAT_R24_UNORM_X8_TYPELESS;vd.ViewDimension=D3D11_SRV_DIMENSION_TEXTURE2D;vd.Texture2D.MipLevels=1;
   ID3D11ShaderResourceView*srcSrv=nullptr;HRESULT hr=d->CreateShaderResourceView(src,&vd,&srcSrv);
   if(FAILED(hr)||!srcSrv){logl("DEPTH source SRV create failed fmt=R24_UNORM_X8_TYPELESS hr=0x%08X",(uint32_t)hr);return false;}
@@ -695,6 +729,8 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
  DlssModeInfo activeMode{};
  bool activeAutoExposure=true;
  LONG lastModeSerial=-1;
+ LONG lastSharpnessSerial=-1;
+ LONG lastRenderPresetSerial=-1;
 
  auto rel=[&](){
   if(scaledColor){scaledColor->Release();scaledColor=nullptr;}
@@ -732,17 +768,31 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
    D3D11_TEXTURE2D_DESC a{},b{},z{};c->GetDesc(&a);m->GetDesc(&b);dep->GetDesc(&z);
    logl("OPENED epoch=%ld color=%ux%u fmt=%u motion=%ux%u fmt=%u depth=%ux%u fmt=%u",e,a.Width,a.Height,(uint32_t)a.Format,b.Width,b.Height,(uint32_t)b.Format,z.Width,z.Height,(uint32_t)z.Format);
    lastModeSerial=-1;
+   lastSharpnessSerial=-1;
+   lastRenderPresetSerial=-1;
    opened=e;st->status=2;
   }
 
   if(!cm||!mm||!dm){Sleep(10);continue;}
 
   const LONG modeSerial=st->mode_serial;
+  const LONG sharpnessSerial=st->sharpness_serial;
+  const LONG renderPresetSerial=st->render_preset_serial;
+  LONG requestedRenderPreset=st->render_preset;
+  if(requestedRenderPreset<10||requestedRenderPreset>13)
+   requestedRenderPreset=11;
+  const LONG requestedSharpnessPercent=st->sharpness_percent;
+  const float requestedSharpness=
+   static_cast<float>(
+    std::clamp<LONG>(requestedSharpnessPercent,0,50)) / 100.0f;
   const uint32_t requestedMode=
    (st->requested_mode<0||st->requested_mode>3)?0u:(uint32_t)st->requested_mode;
   const bool requestedAutoExposure=(st->auto_exposure!=0);
 
-  if(modeSerial!=lastModeSerial||!dlss)
+  if(modeSerial!=lastModeSerial||
+     sharpnessSerial!=lastSharpnessSerial||
+     renderPresetSerial!=lastRenderPresetSerial||
+     !dlss)
   {
    ngx_release_feature();
 
@@ -772,7 +822,8 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
 
    if(!ngxsupported||!ngx_create(
       ctx,activeMode.inW,activeMode.inH,st->cw,st->ch,
-      activeMode.pq,activeMode.name,requestedAutoExposure))
+      activeMode.pq,activeMode.name,requestedAutoExposure,
+      requestedRenderPreset))
    {
     st->status=-31;
     logl("mode feature creation failed mode=%s",activeMode.name);
@@ -787,12 +838,18 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
    activeAutoExposure=requestedAutoExposure;
 
    lastModeSerial=modeSerial;
+   lastSharpnessSerial=sharpnessSerial;
+   lastRenderPresetSerial=renderPresetSerial;
    previousSourceFrame=0;
    havePreviousSourceFrame=false;
 
-   logl("DLSS MODE ACTIVE %s input=%ux%u output=%ux%u autoExposure=%d serial=%ld",
+   logl("DLSS MODE ACTIVE %s input=%ux%u output=%ux%u autoExposure=%d serial=%ld sharpness=%.2f sharpSerial=%ld preset=%c presetSerial=%ld",
     activeMode.name,activeMode.inW,activeMode.inH,st->cw,st->ch,
-    activeAutoExposure?1:0,modeSerial);
+    activeAutoExposure?1:0,modeSerial,requestedSharpness,sharpnessSerial,
+    requestedRenderPreset==10?'J':
+    requestedRenderPreset==12?'L':
+    requestedRenderPreset==13?'M':'K',
+    renderPresetSerial);
   }
 
   HRESULT hc=cm->AcquireSync(1,100);if(hc==WAIT_TIMEOUT)continue;if(FAILED(hc)){logl("color AcquireSync failed 0x%08X",(uint32_t)hc);break;}
@@ -844,6 +901,10 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
    ep.Feature.pInColor=evalColor;ep.Feature.pInOutput=out;ep.pInDepth=evalDepth;ep.pInMotionVectors=evalMotion;
    ep.InRenderSubrectDimensions.Width=activeMode.inW;ep.InRenderSubrectDimensions.Height=activeMode.inH;
    ep.InJitterOffsetX=jx;ep.InJitterOffsetY=jy;
+   const LONG evalSharpnessPercent=st->sharpness_percent;
+   ep.Feature.InSharpness=
+    static_cast<float>(
+     std::clamp<LONG>(evalSharpnessPercent,0,50)) / 100.0f;
 
    if(!activeAutoExposure)
    {
@@ -875,10 +936,11 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
     logl("DLSS history reset: fade/scene transition sourceFrame=%llu luma=%.6f",
       (unsigned long long)sf,fadeLuma);
    if(st->dlss_eval_count==0){
-    logl("EVAL PREFLIGHT v1.0 mode=%s autoExposure=%d MV_DIRECTION=INVERTED_PERMANENT color=%p depth=%p motion=%p output=%p render=%ux%u outputSize=%ux%u jitter=(%.3f,%.3f) MVScale=(%.1f,%.1f) reset=%d",
+    logl("EVAL PREFLIGHT v1.0 mode=%s autoExposure=%d MV_DIRECTION=INVERTED_PERMANENT color=%p depth=%p motion=%p output=%p render=%ux%u outputSize=%ux%u jitter=(%.3f,%.3f) MVScale=(%.1f,%.1f) sharpness=%.2f reset=%d",
       activeMode.name,activeAutoExposure?1:0,ep.Feature.pInColor,ep.pInDepth,ep.pInMotionVectors,ep.Feature.pInOutput,
       ep.InRenderSubrectDimensions.Width,ep.InRenderSubrectDimensions.Height,st->cw,st->ch,
-      ep.InJitterOffsetX,ep.InJitterOffsetY,ep.InMVScaleX,ep.InMVScaleY,ep.InReset);
+      ep.InJitterOffsetX,ep.InJitterOffsetY,ep.InMVScaleX,ep.InMVScaleY,
+      ep.Feature.InSharpness,ep.InReset);
    }
    er=NGX_D3D11_EVALUATE_DLSS_EXT(ctx,dlss,runtime,&ep);
    if(st->dlss_eval_count==0){
@@ -897,6 +959,10 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int){
     }
    }
   }
+
+  // ASI v0.3: no GPU->CPU staging/readback in the live path.
+  // Periodic checksum/motion sampling from v0.25 was removed because its 120-frame
+  // cadence matched the visible ~2 second flicker during output injection.
 
   dm->ReleaseSync(0);mm->ReleaseSync(0);cm->ReleaseSync(0);
   ++n;InterlockedIncrement(&st->consumed);
