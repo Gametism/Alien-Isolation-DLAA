@@ -190,8 +190,8 @@ Alien: Isolation DLAA was created by **Gametism**.
 Special thanks and credit to **Alias Isolation**, whose work on Alien:
 Isolation helped make this project possible.
 
-This project incorporates and/or is derived from MIT-licensed work associated
-with Alias Isolation.
+This project was developed by Gametism with the assistance of AI tools and  
+incorporates and/or is derived from MIT-licensed work associated with Alias Isolation.
 
 ## MIT License
 
