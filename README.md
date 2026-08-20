@@ -7,8 +7,27 @@ Created by Gametism
 Alien: Isolation DLAA adds NVIDIA DLAA to Alien: Isolation at native rendering
 resolution.
 
-The mod provides selectable NVIDIA DLAA render presets and configurable
-sharpness directly through its in-game menu.
+The main goal of the mod is to improve temporal stability. DLAA can
+significantly reduce shimmering, crawling edges and other instability that is
+especially noticeable while the camera or objects are moving.
+
+This is not a native or perfect DLAA implementation. Alien: Isolation was never
+designed to provide DLAA with all of the rendering data and behavior expected
+by modern NVIDIA DLSS/DLAA. The mod adapts the game's existing temporal
+rendering data so that DLAA can be used.
+
+Because of this, DLAA has trade-offs. Although motion can look considerably
+more stable, some edges, textures or fine details may appear softer or show
+temporal smearing compared with DLAA disabled. The amount and visibility of
+these artifacts can vary depending on the scene.
+
+Sharpening can compensate for some of the overall softness, but it cannot
+completely restore detail that has already been softened by the temporal
+reconstruction.
+
+The mod therefore includes selectable NVIDIA DLAA render presets and
+configurable sharpness so users can choose the result they prefer. DLAA can
+also be toggled at any time for direct comparison.
 
 Default configuration:
 
@@ -64,8 +83,12 @@ Four NVIDIA DLAA render presets can be selected:
 Changing the preset recreates the DLAA feature and resets temporal history.
 
 Preset K remains the default because it is NVIDIA's designated DLAA preset and
-provides the safest general-purpose image-quality configuration. Presets L and
-M are available for users who prefer their visual characteristics.
+provides the safest general-purpose image-quality configuration. Presets J, L
+and M are available for users who prefer their visual characteristics.
+
+There is no guarantee that an alternative preset will look better in every
+scene. Differences can include temporal stability, ghosting, flickering and
+overall image softness.
 
 ## Sharpness
 
@@ -132,6 +155,21 @@ While the menu is open:
 - Keyboard input continues to reach Alien: Isolation
 - Controller input continues to reach Alien: Isolation
 - The overlay uses its own virtual raw-input mouse cursor during gameplay
+
+## Known Limitations
+
+- DLAA can make some edges and fine details look softer than with DLAA disabled.
+- Temporal smearing or ghosting may be visible on certain objects or in certain
+  scenes.
+- Increasing sharpness can improve perceived clarity but does not eliminate all
+  temporal reconstruction artifacts.
+- Results can vary between DLAA presets.
+- SMAA T2x must remain enabled. Disabling it can cause severe smearing and
+  visual breakup.
+
+These limitations are a consequence of adapting DLAA to a game that was not
+originally designed for it and do not necessarily indicate that the mod is
+installed incorrectly.
 
 ## Notes
 
