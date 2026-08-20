@@ -9,7 +9,7 @@ Alien: Isolation DLAA adds NVIDIA DLAA to Alien: Isolation at native rendering r
 The v1.0 renderer uses the configuration established during testing:
 
 - Native-resolution DLAA
-- Native SMAA bypass
+- SMAA T2x temporal pipeline integration
 - 8-sample low-discrepancy temporal jitter
 - Corrected/inverted motion-vector convention
 - Linear depth integration
@@ -23,17 +23,19 @@ DLSS Super Resolution is not included in v1.0.
 - NVIDIA DLSS DLLs included with the mod
 - Compatible ASI loader
 
-### In-Game Graphics Settings
+### Required In-Game Graphics Settings
 
-Unlike Alias Isolation, **Alien: Isolation DLAA does not require specific in-game video settings** to function.
+For DLAA to work correctly and reliably, the following in-game setting is required:
 
-You do **not** need to:
+| Option | Required Value |
+| --- | --- |
+| Anti-Aliasing | **SMAA T2x** |
 
-- Set Anti-Aliasing to SMAA T1x
-- Disable Chromatic Aberration
-- Enable Motion Blur
+**Anti-Aliasing must be set to SMAA T2x.**
 
-These settings can be configured according to your personal preference. The mod handles the rendering requirements needed for DLAA independently.
+Disabling Anti-Aliasing or using an incompatible anti-aliasing mode can cause severe temporal smearing and visual breakup.
+
+Unlike Alias Isolation, **Chromatic Aberration does not need to be disabled and Motion Blur does not need to be enabled**. These settings can be configured according to personal preference.
 
 ## In-Game Menu
 
@@ -131,7 +133,7 @@ Rendering-critical settings are intentionally not exposed to users.
 
 The following are fixed because they are required by the tested DLAA path:
 
-- Native SMAA bypass
+- SMAA T2x temporal pipeline
 - Inverted motion-vector direction
 - 8-sample jitter sequence
 - Depth source
